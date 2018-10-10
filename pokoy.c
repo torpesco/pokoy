@@ -43,7 +43,7 @@ typedef struct {
 	uint32_t		tbb; // time between breaks
 	uint32_t		du;  // duration
 	uint32_t		pt;  // postpone time
-	time_t			rt;  // remaining time 
+	time_t			rt;  // remaining time
 } cbreak;
 
 
@@ -107,24 +107,23 @@ static void load_config(void)
 		char *config_home = getenv(CONFIG_HOME_ENV);
 		if (config_home != NULL) {
 			sprintf(config_path, "%s/%s/%s", config_home, NAME, CONFIG_NAME);
-		}
-		else {
+		} else {
 			sprintf(config_path, "%s/%s/%s/%s", getenv("HOME"), ".config", NAME, CONFIG_NAME);
 		}
 	}
 
 	FILE *cfg = fopen(config_path, "r");
 	if (cfg == NULL) {
-		warn("WARNING. Can't open configuration file: '%s'", config_path);	
-		warnx("Using defaults.");	
+		warn("WARNING. Can't open configuration file: '%s'", config_path);
+		warnx("Using defaults.");
 		free(config_path);
 		add_default_breaks();
 		return;
 	}
-	char *buf = malloc(200);
+	char buf[200];
 	char first;
 	char *p, *k;
-	while (fgets(buf, 200, cfg) != NULL) {
+	while (fgets(buf, sizeof buf, cfg) != NULL) {
 		first = buf[0];
 		if (strlen(buf) < 2 || first == START_COMMENT) continue;
 		k = strtok(buf, " \t\n:");
@@ -163,7 +162,6 @@ static void load_config(void)
 		add_default_breaks();
 	}
 	fclose(cfg);
-	free(buf);
 	free(config_path);
 }
 
@@ -183,7 +181,9 @@ static void cleanup(void)
 
 static void signal_handler(int sig)
 {
-	if (sig == SIGUSR1) now = 1;		
+	if (sig == SIGUSR1) {
+		now = 1;
+	}
 	if (sig == SIGUSR2) {
 		fseek(fp, 4, SEEK_SET);
 		if (is_sleeping) {
@@ -196,8 +196,12 @@ static void signal_handler(int sig)
 		fflush(fp);
 		signal_brake = 1;
 	}
-	if (sig == SIGCONT) is_sleeping ^= 1; // flip
-	if (sig == SIGTERM) exit(0);
+	if (sig == SIGCONT) {
+		is_sleeping ^= 1; // flip
+	}
+	if (sig == SIGTERM) {
+		exit(0);
+	}
 }
 
 
@@ -209,7 +213,9 @@ static void init_daemon(void)
 	fflush(fp);
 
 	openlog(NAME, LOG_PID, LOG_USER);
-	if ((flags & FLAG_DEBUG) == 0) setlogmask(LOG_UPTO(LOG_INFO));
+	if ((flags & FLAG_DEBUG) == 0) {
+		setlogmask(LOG_UPTO(LOG_INFO));
+	}
 
 	umask(0);
 	setsid();
@@ -224,10 +230,10 @@ static void init_daemon(void)
 	sa.sa_handler = signal_handler;
 	sa.sa_flags = 0;
 	sigemptyset(&sa.sa_mask);
-	if (sigaction(SIGTERM, &sa, NULL) == -1  || 
-		sigaction(SIGUSR1, &sa, NULL) == -1  || 
-		sigaction(SIGUSR2, &sa, NULL) == -1 ||
-		sigaction(SIGCONT, &sa, NULL) == -1) {
+	if (sigaction(SIGTERM, &sa, NULL) == -1
+	    || sigaction(SIGUSR1, &sa, NULL) == -1
+	    || sigaction(SIGUSR2, &sa, NULL) == -1
+	    || sigaction(SIGCONT, &sa, NULL) == -1) {
 		syslog(LOG_ERR, "Cannot change signal action.");
 	}
 }
@@ -237,29 +243,28 @@ static void init_x_context(void)
 {
 	uint32_t mask, values[2];
 
-	xc.c = xcb_connect (NULL, NULL);
-
+	xc.c = xcb_connect(NULL, NULL);
 	if (xc.c == NULL) {
 		syslog(LOG_ERR, "Cannot open display\n");
 		exit(1);
 	}
-	xc.s = xcb_setup_roots_iterator (xcb_get_setup (xc.c)).data;
+	xc.s = xcb_setup_roots_iterator(xcb_get_setup(xc.c)).data;
 
 
 	// get font
 	xcb_void_cookie_t cookie;
-	xcb_font_t font_id = xcb_generate_id (xc.c);
+	xcb_font_t font_id = xcb_generate_id(xc.c);
 	cookie = xcb_open_font_checked(xc.c, font_id, strlen(font), font);
-	if (xcb_request_check (xc.c, cookie)) {
+	if (xcb_request_check(xc.c, cookie)) {
 		syslog(LOG_WARNING, "Could not load font %s.\nTrying fixed font.", font);
 		memset(font, '\0', strlen(font));
 		strcpy(font, "fixed");
 		cookie = xcb_open_font_checked(xc.c, font_id, strlen(font), font);
-		if (xcb_request_check (xc.c, cookie)) {
+		if (xcb_request_check(xc.c, cookie)) {
 			syslog(LOG_ERR, "Could not load fixed font. Aborting");
 		}
-	} 
-	
+	}
+
 	// create graphics context
 	xc.g = xcb_generate_id(xc.c);
 	mask = XCB_GC_FOREGROUND | XCB_GC_FONT;
@@ -281,11 +286,9 @@ static uint8_t grab(xcb_window_t w)
 
 	cookie = xcb_grab_keyboard(xc.c, 0, w, XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
 	reply = xcb_grab_keyboard_reply(xc.c, cookie, NULL);
-	if (reply) {
-		if (reply->status == XCB_GRAB_STATUS_SUCCESS) {
-			syslog(LOG_DEBUG, "Keyboard grabbed");
-			return 1;
-		}
+	if (reply && reply->status == XCB_GRAB_STATUS_SUCCESS) {
+		syslog(LOG_DEBUG, "Keyboard grabbed");
+		return 1;
 	}
 	syslog(LOG_DEBUG, "Cannot grab keyboard");
 	return 0;
@@ -300,7 +303,7 @@ static xcb_char2b_t *convert_ascii_to_char2b(const char *ascii)
 		return NULL;
 	len = strlen(ascii);
 	wstr = malloc(sizeof(xcb_char2b_t) * (len + 1));
-	if (wstr == NULL)
+	if (!wstr)
 		return NULL;
 	for (i = 0; i <= len; i++) {
 		wstr[i].byte1 = 0;
@@ -357,14 +360,13 @@ static void create_cb(cbreak *cb)
 	values[1] = 1;
 	values[2] = XCB_EVENT_MASK_KEY_PRESS;
 
-	w = xcb_generate_id (xc.c);
-	xcb_create_window (xc.c, XCB_COPY_FROM_PARENT, w, xc.s->root,
-					 0, 0, xc.s->width_in_pixels, xc.s->height_in_pixels, 1,
-					 XCB_WINDOW_CLASS_INPUT_OUTPUT,
-					 xc.s->root_visual,
-					 mask, values);
+	w = xcb_generate_id(xc.c);
+	xcb_create_window(xc.c, XCB_COPY_FROM_PARENT, w, xc.s->root, 0, 0,
+			  xc.s->width_in_pixels, xc.s->height_in_pixels, 1,
+			  XCB_WINDOW_CLASS_INPUT_OUTPUT, xc.s->root_visual,
+			  mask, values);
 
-	xcb_map_window (xc.c, w);
+	xcb_map_window(xc.c, w);
 	/*xcb_set_input_focus(xc.c, XCB_INPUT_FOCUS_FOLLOW_KEYBOARD, w, XCB_CURRENT_TIME);*/
 	grabbed = grab(w);
 
@@ -446,7 +448,7 @@ static void create_cb(cbreak *cb)
 			}
 		}
 
-		if ((p = poll(pollin, 1, 1000)) > 0) { 
+		if ((p = poll(pollin, 1, 1000)) > 0) {
 			if (pollin[0].revents & POLLIN) {
 				while ((e = xcb_poll_for_event(xc.c))) {
 					switch (e->response_type & ~0x80) {
@@ -479,7 +481,7 @@ static void create_cb(cbreak *cb)
 						}
 						break;
 					}
-					free (e);
+					free(e);
 				}
 			}
 		}
@@ -491,12 +493,12 @@ static uint8_t is_idle(void)
 {
 	xcb_screensaver_query_info_cookie_t sqic;
 	xcb_screensaver_query_info_reply_t *sqir;
-	sqic = xcb_screensaver_query_info(xc.c, xc.s->root);	
+	sqic = xcb_screensaver_query_info(xc.c, xc.s->root);
 	sqir = xcb_screensaver_query_info_reply(xc.c, sqic, NULL);
 	syslog(LOG_DEBUG, "Idle time: %d", sqir->ms_since_user_input / 1000);
-	if ((sqir->ms_since_user_input / 1000) > idle_time) 
+	if ((sqir->ms_since_user_input / 1000) > idle_time)
 		return 1;
-	else 
+	else
 		return 0;
 }
 
@@ -529,7 +531,7 @@ static uint8_t pokoy(void)
 	int delta = 0;
 	for (ever) {
 		for (i = 0; i < number_of_breaks; i++) {
-			syslog(LOG_DEBUG, "time(0): %d, rt: %d, tbb: %d, d: %d, pt: %d\n", 
+			syslog(LOG_DEBUG, "time(0): %d, rt: %d, tbb: %d, d: %d, pt: %d\n",
 					(int)time(0), (int)cbreaks[i]->rt, cbreaks[i]->tbb, cbreaks[i]->du, cbreaks[i]->pt);
 			delta = difftime(cbreaks[i]->rt, time(0));
 			if (delta <= 0) {
@@ -544,15 +546,15 @@ static uint8_t pokoy(void)
 					ifr = xcb_get_input_focus_reply(xc.c, xcb_get_input_focus(xc.c), NULL);
 					c = xcb_icccm_get_wm_class(xc.c, ifr->focus);
 					if (xcb_icccm_get_wm_class_reply(xc.c, c, &t, NULL)) {
-						syslog (LOG_DEBUG, "Instance: %s\n", t.instance_name);
-						syslog (LOG_DEBUG, "Class: %s\n", t.class_name);
+						syslog(LOG_DEBUG, "Instance: %s\n", t.instance_name);
+						syslog(LOG_DEBUG, "Class: %s\n", t.class_name);
 						for (j = 0; j < nb; j++) {
 							if ((strcmp(blacklist[j], t.class_name)) == 0) {
 								flags |= FLAG_BLOCK;
 								cbreaks[i]->rt += cbreaks[i]->tbb / 2;
 								syslog(LOG_DEBUG, "%s has focus. Skipping.", t.class_name);
 								break;
-							} 
+							}
 						}
 						xcb_icccm_get_wm_class_reply_wipe(&t);
 					}
@@ -599,7 +601,7 @@ skip:
 						cbreaks[j]->rt += postpone_time;
 				}
 			}
-			now = 0;	
+			now = 0;
 		}
 		if (is_sleeping) {
 			syslog(LOG_DEBUG, "Start sleeping.");
@@ -621,8 +623,8 @@ skip:
 			}
 			syslog(LOG_DEBUG, "Awakening.");
 		}
-		
-		syslog (LOG_DEBUG, "--");
+
+		syslog(LOG_DEBUG, "--");
 		sleep(1);
 	}
 	return 0;
@@ -636,33 +638,41 @@ void pokoy_parse_args(int argc, char **argv, pid_t pid, uint8_t *run)
 	while ((c = getopt(argc, argv, "hvrc:nskd")) != -1) {
 		switch (c) {
 		case 'h':
-			printf ("%s [-hvrnkds] [-c CONFIG_PATH]\n", NAME);
+			printf("%s [-hvrnkds] [-c CONFIG_PATH]\n", NAME);
 			exit(0);
 			break;
 		case 'v':
-			printf ("%s\n", VERSION);
+			printf("%s\n", VERSION);
 			exit(0);
 			break;
 		case 'd':
 			flags |= FLAG_DEBUG;
 		case 'r':
-			if (pid) printf ("Daemon is already running.\n");
-			else *run = 1;
+			if (pid)
+				printf("Daemon is already running.\n");
+			else
+				*run = 1;
 			break;
 		case 'c':
 			snprintf(config_path, 500, "%s", optarg);
 			break;
 		case 'n':
-			if (pid) kill(pid, SIGUSR1);
-			else printf ("Daemon is not running.\n");
+			if (pid)
+				kill(pid, SIGUSR1);
+			else
+				printf("Daemon is not running.\n");
 			exit(0);
 		case 'k':
-			if (pid) kill(pid, SIGTERM);
-			else printf ("Daemon is not running.\n");
+			if (pid)
+				kill(pid, SIGTERM);
+			else
+				printf("Daemon is not running.\n");
 			exit(0);
 		case 's':
-			if (pid) kill(pid, SIGCONT);
-			else printf ("Daemon is not running.\n");
+			if (pid)
+				kill(pid, SIGCONT);
+			else
+				printf("Daemon is not running.\n");
 			exit(0);
 		case '?':
 			exit(1);
@@ -700,12 +710,12 @@ int main(int argc, char **argv)
 		fseek(fp, 4, SEEK_SET);
 		while (fread(&rt, 1, 4, fp)) {
 			if (memcmp(&rt, "zzzz", 4) == 0) {
-				printf ("Daemon is sleeping.\n");
+				printf("Daemon is sleeping.\n");
 				break;
 			} else {
 				rt -= time(0);
-				if ((rt / (60 * 60)) > 0) printf ("%02d:", rt / 60 * 60);
-				printf ("%02d:%02d\n", rt / 60, rt % 60);
+				if ((rt / (60 * 60)) > 0) printf("%02d:", rt / 60 * 60);
+				printf("%02d:%02d\n", rt / 60, rt % 60);
 			}
 		}
 		exit(0);
@@ -714,19 +724,17 @@ int main(int argc, char **argv)
 			fclose(fp);
 			pid_t p = fork();
 			switch (p) {
-				case -1:
-					err(1, "fork error");
-				case 0: {
-					fp = fopen(runtime_path_dir, "w+");
-					status = pokoy();
-					exit(status);
-				}
-				default:
-					exit(0);
+			case -1:
+				err(1, "fork error");
+			case 0:
+				fp = fopen(runtime_path_dir, "w+");
+				status = pokoy();
+				exit(status);
+			default:
+				exit(0);
 			}
-		}
-		else {
-			printf ("Daemon is not running.\n");
+		} else {
+			printf("Daemon is not running.\n");
 		}
 	}
 }
