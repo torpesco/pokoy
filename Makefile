@@ -1,7 +1,7 @@
 VERSION		= 0.2
 CC          ?= gcc
 STRIP		?= strip
-CFLAGS      = -std=gnu11 -O2
+CFLAGS      = -std=gnu11 -O2 -Werror -Wall
 LDFLAGS 	= -lxcb -lxcb-keysyms -lxcb-icccm -lxcb-screensaver
 
 SRCR 		= pokoy.c
